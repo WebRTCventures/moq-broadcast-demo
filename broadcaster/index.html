@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>moq-broadcaster — manual E2E harness</title>
+    <style>
+      body {
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        max-width: 640px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 1.25rem;
+      }
+      label {
+        display: block;
+        margin: 0.75rem 0 0.25rem;
+        font-weight: 600;
+      }
+      input {
+        width: 100%;
+        padding: 0.4rem 0.5rem;
+        font: inherit;
+        box-sizing: border-box;
+      }
+      .row {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.5rem;
+      }
+      button {
+        padding: 0.5rem 1rem;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+      #status {
+        margin-top: 1rem;
+        padding: 0.75rem;
+        background: #f4f4f5;
+        border-radius: 6px;
+        white-space: pre-wrap;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85rem;
+        min-height: 1.2rem;
+      }
+      .hint {
+        color: #52525b;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>moq-broadcaster — manual end-to-end harness</h1>
+    <p class="hint">
+      Milestone 1 exit criterion: publish three quality tracks (hd/med/low) to the relay, then
+      confirm a stock MOQtail player can discover and play each one.
+    </p>
+
+    <label for="relay">Relay URL</label>
+    <input id="relay" type="text" value="https://localhost:4433" />
+
+    <label for="namespace">Namespace (slash-separated)</label>
+    <input id="namespace" type="text" value="broadcaster/demo" />
+
+    <div class="row">
+      <button id="start">Start broadcast</button>
+      <button id="stop" disabled>Stop</button>
+    </div>
+
+    <div id="status">idle</div>
+
+    <p class="hint">
+      Grant camera permission when prompted. Watch the status line and the browser console for the
+      track announcements and any errors.
+    </p>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,64 @@
+{
+  "compilerOptions": {
+    /* Language and environment */
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "useDefineForClassFields": true,
+    "moduleDetection": "force",
+
+    /* WebCodecs (VideoEncoder, VideoFrame, EncodedVideoChunk, ...) ship with the
+       DOM lib in the TypeScript version used here, so no extra @types package is
+       required. If a future TS downgrade drops them, add @types/dom-webcodecs and
+       list it under "types". */
+
+    /* Module resolution — bundler mode, matching the moqtail client-js app so the
+       cross-package imports de-risked in task 1.2 (moqtail-ts + the client-js
+       CMAFMuxer source) can be wired via path aliases/project references. */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+
+    /* Cross-package imports de-risked in task 1.2.
+       The broadcaster is a standalone sibling of moqtail/ (NOT part of the moqtail
+       npm workspace), so the `moqtail` package and its transitive `mp4box` dep are
+       not in broadcaster/node_modules. These path aliases wire the imports to the
+       in-repo locations:
+         - `moqtail`        -> the built draft-16 moqtail-ts library typings/entry,
+                               matching how moqtail/apps/client-js imports `from 'moqtail'`.
+         - `moqtail/model`  -> the library's `model` subpath entry (RequestError lives
+                               here, matching client-js player.ts `from 'moqtail/model'`;
+                               it is also re-exported from the main entry).
+         - `mp4box`         -> transitive dependency of CMAFMuxer (cmaf-muxer.ts imports
+                               `createFile` and the `ISOFile` type from it). Resolved to
+                               the copy hoisted in the moqtail workspace node_modules.
+       CMAFMuxer itself is imported by a direct relative path to the app src file
+       (moqtail/apps/client-js/src/lib/cmaf-muxer.ts); it needs no alias of its own. */
+    "paths": {
+      "moqtail": ["../moqtail/libs/moqtail-ts/dist/index.d.mts"],
+      "moqtail/client": ["../moqtail/libs/moqtail-ts/dist/client.d.mts"],
+      "moqtail/model": ["../moqtail/libs/moqtail-ts/dist/model.d.mts"],
+      "moqtail/util": ["../moqtail/libs/moqtail-ts/dist/util.d.mts"],
+      "mp4box": ["../moqtail/node_modules/mp4box/dist/mp4box.all.d.mts"]
+    },
+
+    /* Strictness */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "skipLibCheck": true,
+
+    "types": ["vitest/importMeta"]
+  },
+  "include": ["*.ts", "**/*.ts"],
+  /* vitest.config.ts uses Node-only APIs (node:url / import.meta.url) to build the
+     runtime moqtail/mp4box aliases; it is build tooling, not application code, and
+     is type-checked by vitest's own loader rather than the app `tsc` run (mirrors
+     how moqtail/apps/client-js keeps vite config out of its app tsconfig). */
+  "exclude": ["node_modules", "dist", "vitest.config.ts", "vite.config.ts"]
+}
