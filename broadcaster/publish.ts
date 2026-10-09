@@ -48,6 +48,11 @@ export interface BroadcasterConfig {
   namespace: string[] // announced via Tuple.fromUtf8Path(namespace.join('/'))
   connectTimeoutMs?: number // default 10_000 (Req 1.2)
   onStatus?: (status: BroadcasterStatus, detail?: string) => void
+  // Optional local monitor: if provided, the acquired camera MediaStream is attached to
+  // this <video> so the operator sees exactly what is being published. UI-only; it does
+  // not affect capture, encoding, or publish. The stream's tracks are stopped during
+  // teardown as before, so the preview goes black on stop.
+  previewElement?: HTMLVideoElement
 }
 
 /** Fixed capture/encode cadence shared by all three quality tracks. */
@@ -81,6 +86,17 @@ export const QUALITY_LADDER: readonly QualityConfig[] = [
   { name: 'med', width: 854, height: 480, bitrate: 1_000_000 },
   { name: 'low', width: 640, height: 360, bitrate: 500_000 },
 ] as const
+
+/**
+ * Distinct accent color per quality, burned into the frame by {@link Broadcaster.drawQualityOverlay}
+ * so a switch is visually obvious. Traffic-light intuition: hd = green (best), med = amber,
+ * low = red (lowest bitrate). A demo aid, not part of the protocol.
+ */
+export const QUALITY_COLORS: Readonly<Record<string, string>> = {
+  hd: '#22c55e',
+  med: '#f59e0b',
+  low: '#ef4444',
+} as const
 
 /**
  * Build the WebCodecs encoder configuration for one quality level. All three share
@@ -383,6 +399,19 @@ export class Broadcaster {
     this.cameraStream = stream
     const track = stream.getVideoTracks()[0]
 
+    // Local monitor (UI-only): mirror the acquired stream into the optional preview
+    // element so the operator sees the camera they are publishing. Muted autoplay avoids
+    // feedback and autoplay-policy blocks. Does not affect the publish pipeline.
+    if (this.config.previewElement) {
+      const el = this.config.previewElement
+      el.srcObject = stream
+      el.muted = true
+      void el.play().catch(() => {
+        // Autoplay can reject on some policies; the operator can click the element to
+        // start it. The publish pipeline is unaffected either way.
+      })
+    }
+
     // Req 2.5: if the source ends while active (e.g. device disconnected), report
     // the camera loss and begin teardown.
     track.addEventListener('ended', () => this.onCameraLost())
@@ -467,7 +496,10 @@ export class Broadcaster {
       if (!pipe || pipe.closed || this.stopped) return
 
       const assignment = assignFrame(pipe.counter, evt.isKey) // Req 4.4, 5.4–5.6, 6.1, 7.1
-      const obj = packageObject(pipe.ftn, assignment, evt.timestamp, evt.data) // Req 5.1, 5.2, 8.1
+      // Stamp the wall-clock capture epoch (ms) at segment time, right before enqueue.
+      // Encode→mux is synchronous and sub-frame, so Date.now() here is an accurate
+      // "captured at" moment for the viewer's glass-to-glass latency readout.
+      const obj = packageObject(pipe.ftn, assignment, evt.timestamp, evt.data, Date.now()) // Req 5.1, 5.2, 8.1
       try {
         pipe.controller.enqueue(obj) // Req 9.4 — (groupId, objectId) non-decreasing
       } catch {
@@ -698,26 +730,24 @@ export class Broadcaster {
       // Keyframe cadence: frame 0 forced key, then every 60th frame (Req 4.1–4.3).
       const isKey = pipe.frameCount % GOP_FRAMES === 0
 
-      // Scale the frame to this pipeline's resolution (Req 3.4). If the source
-      // already matches the target size, pass it natively to avoid an extra copy;
-      // otherwise draw it onto the per-pipeline OffscreenCanvas and wrap the result
-      // in a fresh VideoFrame for the encoder.
-      const needsScale = frame.displayWidth !== pipe.config.width || frame.displayHeight !== pipe.config.height
-      let scaled: VideoFrame
-      if (needsScale) {
-        const ctx = this.scaleContext(pipe)
-        ctx.drawImage(frame, 0, 0, pipe.config.width, pipe.config.height)
-        scaled = new VideoFrame(ctx.canvas, { timestamp, alpha: 'discard' })
-      } else {
-        scaled = frame
-      }
+      // Always route each quality through its per-pipeline OffscreenCanvas: scale the
+      // source frame to this track's resolution (Req 3.4) AND burn in a per-quality
+      // overlay (name, resolution, bitrate, distinct colored border/badge). The overlay
+      // makes a quality switch obvious in the picture itself — a downscaled-then-
+      // upscaled webcam at hd/med/low looks nearly identical on screen, so the baked-in
+      // label + color is what makes Decision 4 visible to the eye. (We route even the
+      // native-size track through the canvas so all three carry a consistent overlay.)
+      const ctx = this.scaleContext(pipe)
+      ctx.drawImage(frame, 0, 0, pipe.config.width, pipe.config.height)
+      this.drawQualityOverlay(ctx, pipe.config)
+      const scaled = new VideoFrame(ctx.canvas, { timestamp, alpha: 'discard' })
 
       pipe.encoder.encode(scaled, { keyFrame: isKey })
       pipe.frameCount++
 
-      // Close intermediate scaled frames to avoid leaks; the native passthrough
-      // frame is the source frame, closed once after the fan-out below.
-      if (scaled !== frame) scaled.close()
+      // Close the scaled frame to avoid leaks; the source frame is closed once after
+      // the fan-out below.
+      scaled.close()
     }
 
     // Close the source frame exactly once after fanning it out to every pipeline.
@@ -738,6 +768,50 @@ export class Broadcaster {
       this.scaleContexts.set(pipe.name, ctx)
     }
     return ctx
+  }
+
+  /**
+   * Burn a per-quality overlay into the (already scaled) frame on the canvas, BEFORE it
+   * is wrapped in a VideoFrame and encoded. Each quality gets a distinct accent color, a
+   * full-frame border, and a badge reading its name + resolution + bitrate. Because the
+   * overlay is baked into the encoded pixels, a quality switch is instantly obvious in
+   * the picture (the color and label change), which a plain downscaled webcam would not
+   * make visible. This is a demo aid; it is drawn on every quality so all three are
+   * visually distinct. Sizes scale with the track width so the badge is legible at
+   * 640-wide and 1280-wide alike.
+   */
+  private drawQualityOverlay(ctx: OffscreenCanvasRenderingContext2D, cfg: QualityConfig): void {
+    const { width: w, height: h, name, bitrate } = cfg
+    const accent = QUALITY_COLORS[name] ?? '#ffffff'
+    const scale = w / 640 // badge/border sizing relative to the smallest track
+
+    // Full-frame accent border — the most peripherally-obvious signal of the active track.
+    const border = Math.max(4, Math.round(8 * scale))
+    ctx.strokeStyle = accent
+    ctx.lineWidth = border
+    ctx.strokeRect(border / 2, border / 2, w - border, h - border)
+
+    // Badge box in the top-left with the quality name, resolution, and bitrate.
+    const pad = Math.round(10 * scale)
+    const fontPx = Math.round(26 * scale)
+    const label = `${name.toUpperCase()}  ${w}×${h}  ${(bitrate / 1_000_000).toFixed(1)} Mbps`
+    ctx.font = `700 ${fontPx}px ui-sans-serif, system-ui, sans-serif`
+    ctx.textBaseline = 'top'
+    const textW = ctx.measureText(label).width
+    const boxW = textW + pad * 2
+    const boxH = fontPx + pad * 2
+    const boxX = border + Math.round(6 * scale)
+    const boxY = border + Math.round(6 * scale)
+
+    // Semi-opaque dark plate for contrast, with an accent left edge.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
+    ctx.fillRect(boxX, boxY, boxW, boxH)
+    ctx.fillStyle = accent
+    ctx.fillRect(boxX, boxY, Math.max(4, Math.round(6 * scale)), boxH)
+
+    // The label text.
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(label, boxX + pad, boxY + pad)
   }
 
   /**

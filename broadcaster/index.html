@@ -3,83 +3,484 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>moq-broadcaster — manual E2E harness</title>
+    <title>Studio · MoQ Broadcaster</title>
     <style>
-      body {
-        font-family: ui-sans-serif, system-ui, sans-serif;
-        max-width: 640px;
-        margin: 2rem auto;
-        padding: 0 1rem;
-        line-height: 1.5;
+      :root {
+        --bg: #0b0d12;
+        --panel: #151922;
+        --panel-2: #1c212c;
+        --line: #262c38;
+        --text: #e6e9ef;
+        --muted: #8b93a3;
+        --accent: #3b82f6;
+        --live: #ef4444;
+        --ok: #22c55e;
       }
-      h1 {
-        font-size: 1.25rem;
-      }
-      label {
-        display: block;
-        margin: 0.75rem 0 0.25rem;
-        font-weight: 600;
-      }
-      input {
-        width: 100%;
-        padding: 0.4rem 0.5rem;
-        font: inherit;
+      * {
         box-sizing: border-box;
       }
-      .row {
-        margin-top: 1rem;
-        display: flex;
-        gap: 0.5rem;
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
-      button {
-        padding: 0.5rem 1rem;
+      .app {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 1.25rem 1rem 3rem;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .brand .logo {
+        width: 1.6rem;
+        height: 1.6rem;
+        border-radius: 7px;
+        background: linear-gradient(135deg, #ef4444, #f59e0b);
+        display: grid;
+        place-items: center;
+        font-size: 0.95rem;
+      }
+      .brand small {
+        color: var(--muted);
+        font-weight: 500;
+        margin-left: 0.1rem;
+      }
+      .icon-btn {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 0.5rem 0.8rem;
         font: inherit;
+        font-size: 0.88rem;
         cursor: pointer;
       }
-      button:disabled {
+      .icon-btn:hover {
+        background: var(--panel-2);
+      }
+      .icon-btn:disabled {
+        opacity: 0.45;
         cursor: not-allowed;
+      }
+
+      /* ---- Stage ----------------------------------------------------------- */
+      .stage {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #000;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+      }
+      .stage video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        /* Mirror the preview like a selfie monitor (does NOT affect what's published). */
+        transform: scaleX(-1);
+        background: #000;
+      }
+
+      .hud-tl {
+        position: absolute;
+        top: 0.75rem;
+        left: 0.75rem;
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        z-index: 3;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(6px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #fff;
+        border-radius: 999px;
+        padding: 0.3rem 0.65rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        font-variant-numeric: tabular-nums;
+      }
+      .pill .dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+      .pill.live {
+        color: #fff;
+      }
+      .pill.live .dot {
+        background: var(--live);
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+          box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+        }
+        50% {
+          opacity: 0.7;
+          box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+        }
+      }
+
+      .hud-tr {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        display: flex;
+        gap: 0.5rem;
+        z-index: 3;
+      }
+
+      .overlay {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(ellipse at center, rgba(11, 13, 18, 0.4), rgba(11, 13, 18, 0.88));
+        z-index: 4;
+        text-align: center;
+        padding: 1rem;
+      }
+      .overlay[hidden] {
+        display: none;
+      }
+      .overlay .sub {
+        color: var(--muted);
+        font-size: 0.85rem;
+        margin-top: 0.75rem;
+        max-width: 22rem;
+      }
+      .overlay .err {
+        color: #fca5a5;
+        font-weight: 600;
+      }
+      .camera-ghost {
+        font-size: 3rem;
         opacity: 0.5;
       }
-      #status {
-        margin-top: 1rem;
-        padding: 0.75rem;
-        background: #f4f4f5;
-        border-radius: 6px;
-        white-space: pre-wrap;
-        font-family: ui-monospace, monospace;
-        font-size: 0.85rem;
-        min-height: 1.2rem;
+      .spinner {
+        width: 2.4rem;
+        height: 2.4rem;
+        border: 3px solid rgba(255, 255, 255, 0.18);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto;
       }
-      .hint {
-        color: #52525b;
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Published quality ladder, bottom-left of the stage while live */
+      .ladder {
+        position: absolute;
+        left: 0.75rem;
+        bottom: 0.75rem;
+        display: flex;
+        gap: 0.4rem;
+        z-index: 3;
+      }
+      .ladder[hidden] {
+        display: none;
+      }
+      .q-badge {
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(6px);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-left-width: 3px;
+        color: #fff;
+        border-radius: 7px;
+        padding: 0.25rem 0.55rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      /* ---- Controls row ---------------------------------------------------- */
+      .controls {
+        margin-top: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .go-live {
+        flex: 1;
+        background: var(--live);
+        color: #fff;
+        border: none;
+        border-radius: 11px;
+        padding: 0.85rem 1rem;
+        font: inherit;
+        font-size: 1.02rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .go-live:hover {
+        filter: brightness(1.08);
+      }
+      .go-live.ending {
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+      }
+      .go-live:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      /* ---- Published-stream info card ------------------------------------- */
+      .info {
+        margin-top: 1rem;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.9rem 1rem;
+      }
+      .info[hidden] {
+        display: none;
+      }
+      .info h3 {
+        margin: 0 0 0.6rem;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 0.6rem;
+      }
+      .cell {
+        background: var(--panel-2);
+        border-radius: 9px;
+        padding: 0.55rem 0.7rem;
+      }
+      .cell .k {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+      .cell .v {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.95rem;
+        font-weight: 600;
+        word-break: break-all;
+      }
+      .info .note {
+        margin: 0.7rem 0 0;
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.5;
+      }
+
+      /* ---- Toasts ---------------------------------------------------------- */
+      .toasts {
+        position: fixed;
+        bottom: 1.25rem;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        z-index: 50;
+        align-items: center;
+      }
+      .toast {
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--text);
+        padding: 0.55rem 0.9rem;
+        border-radius: 10px;
+        font-size: 0.88rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        animation: toast-in 0.2s ease-out;
+      }
+      .toast.err {
+        border-color: #7f1d1d;
+        color: #fca5a5;
+      }
+      @keyframes toast-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* ---- Settings modal -------------------------------------------------- */
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: grid;
+        place-items: center;
+        z-index: 60;
+        padding: 1rem;
+      }
+      .modal[hidden] {
+        display: none;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 1.25rem;
+        width: 100%;
+        max-width: 420px;
+      }
+      .card h2 {
+        margin: 0 0 0.25rem;
+        font-size: 1.05rem;
+      }
+      .card p.sub {
+        margin: 0 0 1rem;
+        color: var(--muted);
         font-size: 0.85rem;
+      }
+      .field {
+        margin-bottom: 0.8rem;
+      }
+      .field label {
+        display: block;
+        font-size: 0.78rem;
+        color: var(--muted);
+        margin-bottom: 0.3rem;
+      }
+      .field input {
+        width: 100%;
+        padding: 0.55rem 0.65rem;
+        font: inherit;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        color: var(--text);
+      }
+      .card .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-top: 1rem;
       }
     </style>
   </head>
   <body>
-    <h1>moq-broadcaster — manual end-to-end harness</h1>
-    <p class="hint">
-      Milestone 1 exit criterion: publish three quality tracks (hd/med/low) to the relay, then
-      confirm a stock MOQtail player can discover and play each one.
-    </p>
+    <div class="app">
+      <div class="topbar">
+        <div class="brand">
+          <span class="logo">●</span>
+          <span>MoQ&nbsp;Studio<small>· go live over QUIC</small></span>
+        </div>
+        <div>
+          <button id="settings-btn" class="icon-btn" title="Connection settings">⚙ Settings</button>
+        </div>
+      </div>
 
-    <label for="relay">Relay URL</label>
-    <input id="relay" type="text" value="https://localhost:4433" />
+      <div class="stage" id="stage">
+        <video id="preview" playsinline muted></video>
 
-    <label for="namespace">Namespace (slash-separated)</label>
-    <input id="namespace" type="text" value="broadcaster/demo" />
+        <div class="hud-tl">
+          <span id="live-pill" class="pill"><span class="dot"></span><span id="live-text">OFFLINE</span></span>
+          <span id="uptime-pill" class="pill" hidden>⏱ <span id="uptime">00:00</span></span>
+        </div>
+        <div class="hud-tr">
+          <span id="phase-pill" class="pill" hidden>—</span>
+        </div>
 
-    <div class="row">
-      <button id="start">Start broadcast</button>
-      <button id="stop" disabled>Stop</button>
+        <div class="ladder" id="ladder" hidden>
+          <span class="q-badge" style="border-left-color: #22c55e">720p · 2.5M</span>
+          <span class="q-badge" style="border-left-color: #f59e0b">480p · 1.0M</span>
+          <span class="q-badge" style="border-left-color: #ef4444">360p · 0.5M</span>
+        </div>
+
+        <div id="overlay" class="overlay">
+          <div id="overlay-idle">
+            <div class="camera-ghost">📷</div>
+            <div class="sub">
+              Your camera preview appears here. Press <strong>Go Live</strong> to publish three quality
+              tracks (720p / 480p / 360p) to the relay.
+            </div>
+          </div>
+          <div id="overlay-loading" hidden>
+            <div class="spinner"></div>
+            <div class="sub" id="loading-text">Starting…</div>
+          </div>
+          <div id="overlay-error" hidden>
+            <div class="err" id="error-text">Something went wrong.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="go-live" class="go-live">● Go Live</button>
+      </div>
+
+      <div id="info" class="info" hidden>
+        <h3>Live stream</h3>
+        <div class="info-grid">
+          <div class="cell"><div class="k">status</div><div class="v" id="info-status">—</div></div>
+          <div class="cell"><div class="k">namespace</div><div class="v" id="info-ns">—</div></div>
+          <div class="cell"><div class="k">relay</div><div class="v" id="info-relay">—</div></div>
+          <div class="cell"><div class="k">tracks</div><div class="v">hd · med · low</div></div>
+        </div>
+        <p class="note">
+          Published over Media over QUIC (MoQ, draft-16): one capture, three simulcast quality tracks,
+          each GOP a MoQ group. Viewers join at the live edge (SUBSCRIBE) and switch quality on a group
+          boundary. One broadcaster fans out to many viewers through the relay.
+        </p>
+      </div>
     </div>
 
-    <div id="status">idle</div>
+    <div id="toasts" class="toasts"></div>
 
-    <p class="hint">
-      Grant camera permission when prompted. Watch the status line and the browser console for the
-      track announcements and any errors.
-    </p>
+    <div id="settings-modal" class="modal" hidden>
+      <div class="card">
+        <h2>Connection</h2>
+        <p class="sub">Where to publish the broadcast.</p>
+        <div class="field">
+          <label for="relay">Relay URL</label>
+          <input id="relay" type="text" value="https://localhost:4433" />
+        </div>
+        <div class="field">
+          <label for="namespace">Namespace</label>
+          <input id="namespace" type="text" value="broadcaster/demo" />
+        </div>
+        <div class="actions">
+          <button id="settings-close" class="icon-btn">Done</button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="./main.ts"></script>
   </body>

@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live · MoQ Player</title>
+    <style>
+      :root {
+        --bg: #0b0d12;
+        --panel: #151922;
+        --panel-2: #1c212c;
+        --line: #262c38;
+        --text: #e6e9ef;
+        --muted: #8b93a3;
+        --accent: #3b82f6;
+        --live: #ef4444;
+        --ok: #22c55e;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .app {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 1.25rem 1rem 3rem;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .brand .logo {
+        width: 1.6rem;
+        height: 1.6rem;
+        border-radius: 7px;
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        display: grid;
+        place-items: center;
+        font-size: 0.95rem;
+      }
+      .brand small {
+        color: var(--muted);
+        font-weight: 500;
+        margin-left: 0.1rem;
+      }
+      .icon-btn {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 0.5rem 0.8rem;
+        font: inherit;
+        font-size: 0.88rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .icon-btn:hover {
+        background: var(--panel-2);
+      }
+      .icon-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      /* ---- Player stage ---------------------------------------------------- */
+      .stage {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #000;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+      }
+      .stage video {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: contain;
+        background: #000;
+      }
+
+      /* Top-left HUD: LIVE badge + latency */
+      .hud-tl {
+        position: absolute;
+        top: 0.75rem;
+        left: 0.75rem;
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        z-index: 3;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(6px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #fff;
+        border-radius: 999px;
+        padding: 0.3rem 0.65rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .pill .dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: var(--live);
+      }
+      .pill.live .dot {
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+      .pill.behind {
+        color: #fde68a;
+      }
+      .pill.behind .dot {
+        background: #f59e0b;
+        animation: none;
+      }
+      .pill .lat-num {
+        font-variant-numeric: tabular-nums;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+          box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+        }
+        50% {
+          opacity: 0.7;
+          box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+        }
+      }
+
+      /* Top-right HUD: viewer count */
+      .hud-tr {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        z-index: 3;
+      }
+
+      /* Center overlay: pre-roll connect + spinner + errors */
+      .overlay {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(ellipse at center, rgba(11, 13, 18, 0.4), rgba(11, 13, 18, 0.85));
+        z-index: 4;
+        text-align: center;
+        padding: 1rem;
+      }
+      .overlay[hidden] {
+        display: none;
+      }
+      .overlay .big-play {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        padding: 0.9rem 1.6rem;
+        font: inherit;
+        font-size: 1.05rem;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 8px 30px rgba(59, 130, 246, 0.4);
+      }
+      .overlay .big-play:hover {
+        filter: brightness(1.08);
+      }
+      .overlay .sub {
+        color: var(--muted);
+        font-size: 0.85rem;
+        margin-top: 0.75rem;
+      }
+      .overlay .err {
+        color: #fca5a5;
+        font-weight: 600;
+      }
+      .spinner {
+        width: 2.4rem;
+        height: 2.4rem;
+        border: 3px solid rgba(255, 255, 255, 0.18);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* GO LIVE pill (bottom-left), only visible when behind */
+      .golive {
+        position: absolute;
+        left: 0.75rem;
+        bottom: 0.75rem;
+        z-index: 3;
+        background: var(--live);
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        padding: 0.4rem 0.85rem;
+        font: inherit;
+        font-size: 0.8rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .golive[hidden] {
+        display: none;
+      }
+
+      /* Settings (gear) menu bottom-right */
+      .gear-wrap {
+        position: absolute;
+        right: 0.75rem;
+        bottom: 0.75rem;
+        z-index: 5;
+      }
+      .gear {
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(6px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #fff;
+        width: 2.3rem;
+        height: 2.3rem;
+        border-radius: 50%;
+        font-size: 1.1rem;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+      }
+      .gear:hover {
+        background: rgba(0, 0, 0, 0.75);
+      }
+      .menu {
+        position: absolute;
+        right: 0;
+        bottom: 2.9rem;
+        min-width: 190px;
+        background: rgba(18, 22, 30, 0.97);
+        backdrop-filter: blur(10px);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.35rem;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+      }
+      .menu[hidden] {
+        display: none;
+      }
+      .menu .menu-head {
+        color: var(--muted);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.4rem 0.6rem 0.3rem;
+      }
+      .menu-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        width: 100%;
+        background: none;
+        border: none;
+        color: var(--text);
+        font: inherit;
+        font-size: 0.9rem;
+        text-align: left;
+        padding: 0.5rem 0.6rem;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .menu-item:hover {
+        background: var(--panel-2);
+      }
+      .menu-item .check {
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .menu-item .mini-spin {
+        width: 0.9rem;
+        height: 0.9rem;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      .menu-item[disabled] {
+        opacity: 0.6;
+        cursor: default;
+      }
+      .menu-sep {
+        height: 1px;
+        background: var(--line);
+        margin: 0.3rem 0.2rem;
+      }
+
+      /* ---- Toasts ---------------------------------------------------------- */
+      .toasts {
+        position: fixed;
+        bottom: 1.25rem;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        z-index: 50;
+        align-items: center;
+      }
+      .toast {
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--text);
+        padding: 0.55rem 0.9rem;
+        border-radius: 10px;
+        font-size: 0.88rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        animation: toast-in 0.2s ease-out;
+      }
+      .toast.err {
+        border-color: #7f1d1d;
+        color: #fca5a5;
+      }
+      @keyframes toast-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* ---- Stats for nerds ------------------------------------------------- */
+      .stats {
+        margin-top: 1rem;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.9rem 1rem;
+      }
+      .stats[hidden] {
+        display: none;
+      }
+      .stats h3 {
+        margin: 0 0 0.6rem;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.6rem;
+      }
+      .stat {
+        background: var(--panel-2);
+        border-radius: 9px;
+        padding: 0.55rem 0.7rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+      }
+      .stat-label {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+      .stat-val {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 1rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .stat-val.changed {
+        animation: flash 0.7s ease-out;
+      }
+      @keyframes flash {
+        from {
+          color: #fde68a;
+        }
+        to {
+          color: inherit;
+        }
+      }
+      .stats .note {
+        margin: 0.7rem 0 0;
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.5;
+      }
+
+      /* ---- Connection panel (modal) --------------------------------------- */
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: grid;
+        place-items: center;
+        z-index: 60;
+        padding: 1rem;
+      }
+      .modal[hidden] {
+        display: none;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 1.25rem;
+        width: 100%;
+        max-width: 420px;
+      }
+      .card h2 {
+        margin: 0 0 0.25rem;
+        font-size: 1.05rem;
+      }
+      .card p.sub {
+        margin: 0 0 1rem;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+      .field {
+        margin-bottom: 0.8rem;
+      }
+      .field label {
+        display: block;
+        font-size: 0.78rem;
+        color: var(--muted);
+        margin-bottom: 0.3rem;
+      }
+      .field input {
+        width: 100%;
+        padding: 0.55rem 0.65rem;
+        font: inherit;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        color: var(--text);
+      }
+      .card .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-top: 1rem;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 9px;
+        padding: 0.55rem 1rem;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .btn-primary:hover {
+        filter: brightness(1.08);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="topbar">
+        <div class="brand">
+          <span class="logo">◉</span>
+          <span>MoQ&nbsp;Live<small>· sub-second streaming</small></span>
+        </div>
+        <div style="display: flex; gap: 0.5rem">
+          <button id="stats-toggle" class="icon-btn" title="Stats for nerds">📊 Stats</button>
+          <button id="settings-btn" class="icon-btn" title="Connection settings">⚙ Settings</button>
+          <button id="stop" class="icon-btn" disabled>■ Stop</button>
+        </div>
+      </div>
+
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted controls></video>
+
+        <div class="hud-tl">
+          <span id="live-pill" class="pill live" hidden><span class="dot"></span><span id="live-text">LIVE</span></span>
+          <span id="lat-pill" class="pill" hidden>◉ <span id="lat-num" class="lat-num">—</span> latency</span>
+        </div>
+
+        <div class="hud-tr">
+          <span id="viewers-pill" class="pill" hidden>👁 <span id="viewers-num">1</span></span>
+        </div>
+
+        <button id="golive" class="golive" hidden><span>●</span> GO LIVE</button>
+
+        <div class="gear-wrap">
+          <button id="gear" class="gear" title="Quality" hidden>⚙</button>
+          <div id="menu" class="menu" hidden>
+            <div class="menu-head">Quality</div>
+            <div id="menu-items"><!-- built from the catalog after connect --></div>
+          </div>
+        </div>
+
+        <div id="overlay" class="overlay">
+          <div id="overlay-connect">
+            <button id="connect" class="big-play">▶ Watch live stream</button>
+            <div class="sub">Joins the live broadcast at the current moment (join-late).</div>
+          </div>
+          <div id="overlay-loading" hidden>
+            <div class="spinner"></div>
+            <div class="sub" id="loading-text">Connecting…</div>
+          </div>
+          <div id="overlay-error" hidden>
+            <div class="err" id="error-text">Something went wrong.</div>
+            <div class="sub"><button id="retry" class="icon-btn">↻ Try again</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="stats" class="stats" hidden>
+        <h3>Stats for nerds</h3>
+        <div class="stat-grid">
+          <div class="stat"><span class="stat-label">resolution</span><span id="stat-res" class="stat-val">—</span></div>
+          <div class="stat"><span class="stat-label">glass-to-glass</span><span id="stat-lat" class="stat-val">—</span></div>
+          <div class="stat"><span class="stat-label">buffered ahead</span><span id="stat-buf" class="stat-val">—</span></div>
+          <div class="stat"><span class="stat-label">decode rate</span><span id="stat-fps" class="stat-val">—</span></div>
+          <div class="stat"><span class="stat-label">dropped frames</span><span id="stat-drop" class="stat-val">—</span></div>
+          <div class="stat"><span class="stat-label">current track</span><span id="stat-track" class="stat-val">—</span></div>
+        </div>
+        <p class="note">
+          Powered by Media over QUIC (MoQ, draft-16). The player joins the live edge via SUBSCRIBE and
+          switches quality on a group boundary. The scrubber seeks the local MSE buffer (not a relay
+          replay) — hit GO LIVE to return to the edge.
+        </p>
+      </div>
+    </div>
+
+    <div id="toasts" class="toasts"></div>
+
+    <div id="settings-modal" class="modal" hidden>
+      <div class="card">
+        <h2>Connection</h2>
+        <p class="sub">Point the player at a MoQ relay and the broadcast namespace.</p>
+        <div class="field">
+          <label for="relay">Relay URL</label>
+          <input id="relay" type="text" value="https://localhost:4433" />
+        </div>
+        <div class="field">
+          <label for="namespace">Namespace</label>
+          <input id="namespace" type="text" value="broadcaster/demo" />
+        </div>
+        <div class="field">
+          <label for="quality">Initial quality (blank = default)</label>
+          <input id="quality" type="text" value="med" />
+        </div>
+        <div class="actions">
+          <button id="settings-close" class="icon-btn">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

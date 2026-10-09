@@ -1,0 +1,63 @@
+{
+  "compilerOptions": {
+    /* Language and environment */
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "useDefineForClassFields": true,
+    "moduleDetection": "force",
+
+    /* WebCodecs / MSE (MediaSource, SourceBuffer, VideoFrame, ...) ship with the
+       DOM lib in the TypeScript version used here, so no extra @types package is
+       required. If a future TS downgrade drops them, add the matching @types
+       package and list it under "types". */
+
+    /* Module resolution — bundler mode, matching the moqtail client-js app so the
+       cross-package imports de-risked in task 1.2 (moqtail-ts: `moqtail`,
+       `moqtail/client`, `moqtail/model`, `moqtail/util`) can be wired via path
+       aliases. The viewer imports NO `mp4box`/`CMAFMuxer` (it consumes objects, it
+       does not mux), so those aliases are intentionally absent. */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+
+    /* Cross-package imports de-risked in task 1.2.
+       The viewer is a standalone sibling of moqtail/ (NOT part of the moqtail npm
+       workspace), so the `moqtail` package is not in viewer/node_modules. These
+       path aliases wire the imports to the in-repo built draft-16 moqtail-ts
+       library typings:
+         - `moqtail`        -> main entry (FullTrackName, FilterType, GroupOrder,
+                               Tuple, MoqtObject, Location).
+         - `moqtail/client` -> client subpath entry (MOQtailClient).
+         - `moqtail/model`  -> model subpath entry (CMSFCatalog, RequestError).
+         - `moqtail/util`   -> util subpath entry (NetworkTelemetry) — the viewer-
+                               specific entry the broadcaster does not need.
+       The viewer imports NO `mp4box`/`CMAFMuxer` (it consumes objects, it does not
+       mux), so those aliases are intentionally absent. Keep these in sync with the
+       vite/vitest `resolve.alias` arrays, which point at the matching dist/*.mjs. */
+    "paths": {
+      "moqtail": ["../moqtail/libs/moqtail-ts/dist/index.d.mts"],
+      "moqtail/client": ["../moqtail/libs/moqtail-ts/dist/client.d.mts"],
+      "moqtail/model": ["../moqtail/libs/moqtail-ts/dist/model.d.mts"],
+      "moqtail/util": ["../moqtail/libs/moqtail-ts/dist/util.d.mts"]
+    },
+
+    /* Strictness */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "skipLibCheck": true,
+
+    "types": ["vitest/importMeta"]
+  },
+  "include": ["*.ts", "**/*.ts"],
+  /* vite/vitest config files are build tooling, not application code; they are
+     type-checked by their own loaders rather than the app `tsc` run (mirrors how
+     moqtail/apps/client-js keeps vite config out of its app tsconfig). */
+  "exclude": ["node_modules", "dist", "vitest.config.ts", "vite.config.ts"]
+}

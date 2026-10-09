@@ -6,8 +6,20 @@
 // function of the counter state and the emitted-keyframe flag it is fed, which is
 // what makes it unit- and property-testable.
 
-import { ExtensionHeaders, Location, MoqtObject, ObjectForwardingPreference } from 'moqtail'
-import type { FullTrackName, KeyValuePair } from 'moqtail'
+import { ExtensionHeaders, KeyValuePair, Location, MoqtObject, ObjectForwardingPreference } from 'moqtail'
+import type { FullTrackName } from 'moqtail'
+
+/**
+ * Custom extension-header type id carrying the wall-clock capture epoch in
+ * milliseconds (`Date.now()` at segment time). This is DISTINCT from the LOC
+ * `CaptureTimestamp` header (type 2), which carries the media-timeline
+ * `VideoFrame.timestamp` (µs) — a presentation clock the viewer cannot convert to
+ * wall-clock latency. The viewer subtracts this epoch from its own `Date.now()` to
+ * compute real glass-to-glass latency (accurate when broadcaster and viewer share a
+ * clock, e.g. the same machine, or NTP-synced hosts). Even type id => varint value
+ * per the MoQ KVP convention; 20 avoids the used LOC ids (2, 4, 6, 13).
+ */
+export const WALLCLOCK_CAPTURE_EPOCH_MS_TYPE = 20
 
 /** Fixed priority and marking constants (Req 7.2–7.4, 8.3–8.5). */
 export const KEYFRAME_PRIORITY = 1 // lower number = higher priority
@@ -97,11 +109,22 @@ export function assignFrame(counter: GroupCounter, isKey: boolean): FrameAssignm
  * Attaches exactly one capture-timestamp header (Req 8.1, 8.2) and exactly one
  * video-frame-marking header carrying `marking` (Req 8.3–8.5).
  */
-export function buildExtensionHeaders(captureTimestampMicros: number, marking: number): KeyValuePair[] {
-  return new ExtensionHeaders()
+export function buildExtensionHeaders(
+  captureTimestampMicros: number,
+  marking: number,
+  wallClockEpochMs?: number,
+): KeyValuePair[] {
+  const headers = new ExtensionHeaders()
     .addCaptureTimestamp(Math.round(captureTimestampMicros))
     .addVideoFrameMarking(marking)
-    .build()
+  // Wall-clock capture epoch (ms) for real glass-to-glass latency on the viewer. Added
+  // as a raw even-typed varint header so it rides alongside the LOC headers without a
+  // library change. Omitted (not added) when not provided, keeping the deterministic
+  // LOC-only output for the property tests that call this without it.
+  if (wallClockEpochMs !== undefined) {
+    headers.addRaw(KeyValuePair.tryNewVarInt(WALLCLOCK_CAPTURE_EPOCH_MS_TYPE, Math.round(wallClockEpochMs)))
+  }
+  return headers.build()
 }
 
 /**
@@ -120,6 +143,7 @@ export function packageObject(
   assignment: FrameAssignment,
   captureTimestampMicros: number,
   payload: Uint8Array,
+  wallClockEpochMs?: number,
 ): MoqtObject {
   return MoqtObject.newWithPayload(
     ftn,
@@ -127,7 +151,7 @@ export function packageObject(
     assignment.priority,
     assignment.forwardingPreference,
     0n,
-    buildExtensionHeaders(captureTimestampMicros, assignment.marking),
+    buildExtensionHeaders(captureTimestampMicros, assignment.marking, wallClockEpochMs),
     payload,
   )
 }
