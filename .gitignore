@@ -16,3 +16,7 @@ target/
 *.key
 *.crt
 certs/
+
+# MOQtail is cloned as a build dependency (its own git repo, draft-16 branch) — never
+# commit the clone. See README "Setup": `git clone --branch draft-16 ... moqtail`.
+/moqtail/
